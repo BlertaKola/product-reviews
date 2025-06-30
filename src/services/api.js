@@ -1,8 +1,9 @@
 import axios from 'axios'
 
-// Create axios instance
+const BASE_URL = import.meta.env.VITE_API_BASE_URL 
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000', 
+  baseURL: BASE_URL, 
   timeout: 10000,
 })
 
@@ -14,7 +15,7 @@ const refreshToken = async () => {
   }
 
   try {
-    const response = await axios.post('http://localhost:8000/api/token/refresh/', {
+    const response = await axios.post(`${BASE_URL}/api/token/refresh/`, {
       refresh: refresh
     })
     
@@ -56,7 +57,6 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh failed, redirect to login
         window.location.href = '/'
         return Promise.reject(refreshError)
       }
@@ -78,7 +78,32 @@ export const authAPI = {
 
 export const reviewsAPI = {
   getAll: () => api.get('/api/reviews/'),
+  getById: (id) => api.get(`/api/reviews/${id}/`),
   create: (review) => api.post('/api/reviews/', review),
+  
+
+  getAllAdmin: () => api.get('/api/admin/reviews/'),
+}
+
+
+export const pollForModeration = async (reviewId, maxAttempts = 10, interval = 500) => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await reviewsAPI.getById(reviewId)
+      const review = response.data
+      
+      if (review.moderation_result !== null && review.moderation_result !== undefined) {
+        return review
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, interval))
+    } catch (error) {
+      console.error('Polling error:', error)
+      throw error
+    }
+  }
+  
+  throw new Error('Moderation timeout - please refresh to see updated status')
 }
 
 export default api 
