@@ -24,7 +24,6 @@
 
     <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="space-y-8">
-        <!-- Review Form -->
         <ReviewForm 
           @reviewSubmitted="handleReviewSubmitted"
           @showToast="handleShowToast"
@@ -129,14 +128,16 @@ const autoRefreshInterval = ref(null)
 
 
 const nonFlaggedReviews = computed(() => {
-  return reviews.value.filter(review => review.is_flagged !== true)
+  return reviews.value
+    .filter(review => review.is_flagged !== true && review.is_spam !== true)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 })
 
 const fetchReviews = async () => {
   loading.value = true
   try {
     const response = await reviewsAPI.getAll()
-    reviews.value = response.data
+    reviews.value = response.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   } catch (error) {
     console.error('Error fetching reviews:', error)
     toast.showError(
@@ -151,7 +152,7 @@ const fetchReviews = async () => {
 const startAutoRefresh = () => {
   autoRefreshInterval.value = setInterval(() => {
     fetchReviews()
-  }, 30000) // 30 seconds
+  }, 30000) 
 }
 
 const stopAutoRefresh = () => {

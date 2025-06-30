@@ -75,22 +75,30 @@
       </div>
     </div>
     
-    <div v-if="submissionResult" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+    <div v-if="submissionResult" class="mt-4 p-4 rounded-lg" :class="getWarningClasses()">
       <div class="flex items-start space-x-3">
         <div class="flex-shrink-0">
-          <svg class="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+          <svg v-if="submissionResult.is_spam" class="w-5 h-5 text-yellow-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+          </svg>
+          <svg v-else class="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
         </div>
         <div class="flex-1">
-          <h3 class="text-sm font-medium text-red-800">
-            Review Contains Harmful Content
+          <h3 class="text-sm font-medium" :class="getWarningTextClass()">
+            {{ getWarningTitle() }}
           </h3>
-          <p class="text-sm mt-1 text-red-800">
-            Your review was flagged for inappropriate content and won't be shown publicly.
+          <p class="text-sm mt-1" :class="getWarningTextClass()">
+            {{ getWarningMessage() }}
           </p>
-          <div v-if="getFlaggedCategories(submissionResult).length > 0" class="mt-2">
-            <p class="text-sm text-red-800">
+          <div v-if="submissionResult.is_spam && submissionResult.spam_confidence" class="mt-2">
+            <p class="text-sm" :class="getWarningTextClass()">
+              Spam confidence: {{ (submissionResult.spam_confidence * 100).toFixed(1) }}%
+            </p>
+          </div>
+          <div v-if="!submissionResult.is_spam && getFlaggedCategories(submissionResult).length > 0" class="mt-2">
+            <p class="text-sm" :class="getWarningTextClass()">
               Issues detected: {{ getFlaggedCategories(submissionResult).join(', ') }}
             </p>
           </div>
@@ -136,7 +144,7 @@ const submitReview = async () => {
         
         isSubmitting.value = false
         
-        if (moderatedReview.moderation_result?.flagged === false) {
+        if (moderatedReview.moderation_result?.flagged === false && moderatedReview.is_spam !== true) {
           showSuccessMessage.value = true
           
           emit('reviewSubmitted', moderatedReview)
@@ -158,6 +166,19 @@ const submitReview = async () => {
             type: 'warning',
             title: 'Review Contains Harmful Content',
             message: 'Your review won\'t be publicly shown due to inappropriate content.'
+          })
+          
+          setTimeout(() => {
+            submissionResult.value = null
+          }, 8000)
+          
+        } else if (moderatedReview.is_spam === true) {
+          submissionResult.value = moderatedReview
+          
+          emit('showToast', {
+            type: 'warning',
+            title: 'Review Detected as Spam',
+            message: `Your review was flagged as spam (${(moderatedReview.spam_confidence * 100).toFixed(1)}% confidence) and won't be shown publicly.`
           })
           
           setTimeout(() => {
@@ -222,5 +243,41 @@ const getFlaggedCategories = (review) => {
   }
   
   return []
+}
+
+const getWarningClasses = () => {
+  if (submissionResult.value && submissionResult.value.is_spam) {
+    return 'bg-yellow-50 border border-yellow-200'
+  } else if (submissionResult.value) {
+    return 'bg-red-50 border border-red-200'
+  }
+  return ''
+}
+
+const getWarningTextClass = () => {
+  if (submissionResult.value && submissionResult.value.is_spam) {
+    return 'text-yellow-800'
+  } else if (submissionResult.value) {
+    return 'text-red-800'
+  }
+  return ''
+}
+
+const getWarningTitle = () => {
+  if (submissionResult.value && submissionResult.value.is_spam) {
+    return 'Review Detected as Spam'
+  } else if (submissionResult.value) {
+    return 'Review Contains Harmful Content'
+  }
+  return ''
+}
+
+const getWarningMessage = () => {
+  if (submissionResult.value && submissionResult.value.is_spam) {
+    return `Your review was flagged as spam (${(submissionResult.value.spam_confidence * 100).toFixed(1)}% confidence) and won't be shown publicly.`
+  } else if (submissionResult.value) {
+    return 'Your review was flagged for inappropriate content and won\'t be shown publicly.'
+  }
+  return ''
 }
 </script> 

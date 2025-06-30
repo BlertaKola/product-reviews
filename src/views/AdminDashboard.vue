@@ -1,6 +1,5 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
     <header class="bg-gray-900 text-white">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
@@ -26,7 +25,7 @@
 
     <div class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div class="bg-blue-50 p-4 rounded-lg">
             <div class="text-2xl font-bold text-blue-900">{{ reviews.length }}</div>
             <div class="text-sm text-blue-700">Total Reviews</div>
@@ -39,6 +38,10 @@
             <div class="text-2xl font-bold text-red-900">{{ flaggedCount }}</div>
             <div class="text-sm text-red-700">Flagged</div>
           </div>
+          <div class="bg-orange-50 p-4 rounded-lg">
+            <div class="text-2xl font-bold text-orange-900">{{ spamCount }}</div>
+            <div class="text-sm text-orange-700">Spam</div>
+          </div>
           <div class="bg-yellow-50 p-4 rounded-lg">
             <div class="text-2xl font-bold text-yellow-900">{{ pendingCount }}</div>
             <div class="text-sm text-yellow-700">Pending</div>
@@ -47,9 +50,7 @@
       </div>
     </div>
 
-    <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Filter Tabs -->
       <div class="mb-6">
         <div class="border-b border-gray-200">
           <nav class="-mb-px flex space-x-8">
@@ -167,6 +168,52 @@
               <span class="text-sm font-medium text-yellow-800">Awaiting AI moderation...</span>
             </div>
           </div>
+
+          <div v-if="review.moderation_result" class="mt-3 space-y-2">
+            
+            <div v-if="review.is_spam" class="space-y-1">
+              <h4 class="text-sm font-medium text-orange-900">Spam Detection</h4>
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="text-gray-600">Spam Confidence:</span>
+                  <span class="ml-2 font-medium text-orange-900">{{ (review.spam_confidence * 100).toFixed(1) }}%</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">Non-Spam Probability:</span>
+                  <span class="ml-2 font-medium text-green-700">{{ (review.moderation_result.non_spam_probability * 100).toFixed(1) }}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="review.is_flagged" class="space-y-1">
+              <h4 class="text-sm font-medium text-red-900">Content Violations</h4>
+              <div v-if="review.flagged_categories?.length > 0" class="flex flex-wrap gap-1">
+                <span 
+                  v-for="category in review.flagged_categories" 
+                  :key="category"
+                  class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full"
+                >
+                  {{ category }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="review.moderation_result.category_scores && !review.is_spam" class="space-y-1">
+              <h4 class="text-sm font-medium text-gray-900">Top Risk Categories</h4>
+              <div class="space-y-1">
+                <div 
+                  v-for="[category, score] in getTopCategories(review.moderation_result.category_scores, 3)" 
+                  :key="category"
+                  class="flex justify-between text-sm"
+                >
+                  <span class="text-gray-600 capitalize">{{ category.replace(/[/_-]/g, ' ') }}:</span>
+                  <span class="font-medium" :class="score > 0.5 ? 'text-red-600' : 'text-gray-900'">
+                    {{ (score * 100).toFixed(1) }}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -190,15 +237,20 @@ const filters = computed(() => [
   { key: 'all', label: 'All Reviews', count: reviews.value.length },
   { key: 'approved', label: 'Approved', count: approvedCount.value },
   { key: 'flagged', label: 'Flagged', count: flaggedCount.value },
+  { key: 'spam', label: 'Spam', count: spamCount.value },
   { key: 'pending', label: 'Pending', count: pendingCount.value }
 ])
 
 const approvedCount = computed(() => 
-  reviews.value.filter(r => r.moderation_result?.flagged === false).length
+  reviews.value.filter(r => r.moderation_result?.flagged === false && r.is_spam !== true).length
 )
 
 const flaggedCount = computed(() => 
   reviews.value.filter(r => r.is_flagged === true).length
+)
+
+const spamCount = computed(() => 
+  reviews.value.filter(r => r.is_spam === true).length
 )
 
 const pendingCount = computed(() => 
@@ -206,16 +258,26 @@ const pendingCount = computed(() =>
 )
 
 const filteredReviews = computed(() => {
+  let filtered = []
+  
   switch (activeFilter.value) {
     case 'approved':
-      return reviews.value.filter(r => r.moderation_result?.flagged === false)
+      filtered = reviews.value.filter(r => r.moderation_result?.flagged === false && r.is_spam !== true)
+      break
     case 'flagged':
-      return reviews.value.filter(r => r.is_flagged === true)
+      filtered = reviews.value.filter(r => r.is_flagged === true)
+      break
+    case 'spam':
+      filtered = reviews.value.filter(r => r.is_spam === true)
+      break
     case 'pending':
-      return reviews.value.filter(r => r.moderation_result === null)
+      filtered = reviews.value.filter(r => r.moderation_result === null)
+      break
     default:
-      return reviews.value
+      filtered = reviews.value
   }
+  
+  return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 })
 
 const checkAdminAccess = async () => {
@@ -238,7 +300,7 @@ const fetchReviews = async () => {
     }
 
     const response = await reviewsAPI.getAllAdmin()
-    reviews.value = response.data
+    reviews.value = response.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   } catch (error) {
     console.error('Error fetching admin reviews:', error)
     if (error.response?.status === 403) {
@@ -254,12 +316,14 @@ const fetchReviews = async () => {
 
 const getModerationBorderColor = (review) => {
   if (review.moderation_result === null) return 'border-yellow-400'
+  if (review.is_spam === true) return 'border-orange-400'
   return review.is_flagged ? 'border-red-400' : 'border-green-400'
 }
 
 const getModerationBadgeClasses = (review) => {
   const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium'
   if (review.moderation_result === null) return `${base} bg-yellow-100 text-yellow-800`
+  if (review.is_spam === true) return `${base} bg-orange-100 text-orange-800`
   return review.is_flagged 
     ? `${base} bg-red-100 text-red-800`
     : `${base} bg-green-100 text-green-800`
@@ -267,6 +331,7 @@ const getModerationBadgeClasses = (review) => {
 
 const getModerationStatus = (review) => {
   if (review.moderation_result === null) return 'Pending'
+  if (review.is_spam === true) return 'Spam'
   return review.is_flagged ? 'Flagged' : 'Approved'
 }
 
@@ -292,6 +357,12 @@ const formatDate = (dateString) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const getTopCategories = (categoryScores, topN) => {
+  return Object.entries(categoryScores)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
 }
 
 onMounted(() => {
